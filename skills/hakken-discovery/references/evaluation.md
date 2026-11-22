@@ -36,6 +36,20 @@ the paper reports recall and ranking metrics instead. If a user insists, present
 - `--top-frac` sets the prediction budget per relation; report it. Also show a
   budget sweep (e.g. 0.01, 0.05, 0.1, 0.2) when the user cares about operating points.
 
+## How the back-test treats the fitted model
+`H backtest --cutoff T --window W` fits the features model on `G(T−W) → (T−W, T]` and then
+predicts from `G(T)` — the model never sees anything after `T`. Default `--model both` also
+runs the fixed heuristic so you can see what fitting buys. Each back-test is saved as a
+`runs/<id>_backtest_*` with `backtest.md/json`.
+
+**Calibration in the large**: expected (sum of probabilities) vs. observed new triples within
+`(T, T+W]`. Observed below expected is normal (unpublished ≠ false, and discovery rates drift);
+a gap above ~3× means probabilities should be read as relative ranks, not absolute chances.
+
+**Strongest standardized features** show what drives the model (e.g. high `pattern` and
+`support` weights = relation-type rules and repeatedly reported neighbourhoods matter). Large
+negative weights on correlated features (cn vs. Adamic–Adar) are collinearity, not a bug.
+
 ## Benchmark comparison (paper, 2020 cutoff, %)
 | Model | Prec macro | Rec macro | F1 macro | Prec w | Rec w | F1 w | nDCG |
 |---|---|---|---|---|---|---|---|
@@ -48,10 +62,11 @@ the paper reports recall and ranking metrics instead. If a user insists, present
 | THiGER | 60.2 | 46.1 | 51.0 | 86.2 | 71.7 | 78.0 | 92.2 |
 | THiGERLLM | 53.8 | 60.7 | 51.2 | 84.0 | 66.5 | 73.7 | 90.3 |
 
-The bundled surrogate is closest in spirit to the RuleBased / THiGER-graph family
-plus temporal weighting; do not claim THiGERLLM-level numbers for it.
+`hakken.py`'s features model is closest in spirit to the feature-based Science4Cast winners
+and the RuleBased / THiGER-graph family; its numbers are not comparable to this table (different
+data, candidate sets and budgets) — never claim THiGERLLM-level performance.
 
 ## Retrospective sanity check (cheap and convincing)
 Pick 3–5 famous discoveries in the user's field with known publication years. Run
-`predict --cutoff <year-1>` and report the rank/percentile each received. This is an
+`H predict --cutoff <year-1>` and report the rank/percentile each received. This is an
 intuitive complement to aggregate recall.

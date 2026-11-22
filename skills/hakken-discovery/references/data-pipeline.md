@@ -8,15 +8,30 @@
 - [Quality checks](#quality-checks)
 
 ## Target schema
-CSV (or TSV), one row per observation; duplicates are fine (earliest year wins):
+Observations go into the workspace ledger (`hakken/ledger/observations.csv`, see
+`workspace.md`). To add your own, write CSV/TSV with one row per observation (a source
+stating a fact); repeats across sources are wanted (they become the `support` feature):
 
 ```
-subject,relation,object,year,subject_type,object_type,source
-TP53,AFFECTS_EXPRESSION_OF,BAMBI,2011,gene,gene,PMID:123456
+subject,relation,object,year,source,evidence,subject_type,object_type
+TP53,AFFECTS_EXPRESSION_OF,BAMBI,2011,PMID:123456,"p53 induction increased BAMBI ...",gene,gene
 ```
-Required: `subject, relation, object, year`. Use canonical identifiers or preferred
-names consistently (HGNC symbols, ChEBI names, MeSH terms, material formulas…).
-Relations: UPPER_SNAKE, directed, active voice (`TREATS`, not `IS_TREATED_BY`).
+then `H ingest file.csv --extractor user|agent:<model-name>|<database>`.
+Required: `subject, relation, object, year` (aliases head/predicate/tail/date accepted).
+Use canonical identifiers or preferred names consistently (HGNC symbols, ChEBI names, MeSH
+terms, material formulas…). Relations: UPPER_SNAKE, directed, active voice.
+
+## Built-in fetcher (biomedicine)
+`H fetch-pubtator --query @GENE_SIRT1 --query "cellular senescence" --year-from 1995 --year-to 2025 --per-year 30`
+- Queries are PubTator3 entity ids (`@GENE_<symbol>`, `@DISEASE_<Name>`, `@CHEMICAL_<Name>`)
+  or free text. Per-year stratification is essential: plain relevance search returns mostly
+  recent papers and leaves no history to learn from.
+- Each relation in each document becomes one observation (`source=PMID:..`,
+  `extractor=pubtator3`). PubTator3 relation types: ASSOCIATION, POSITIVE_CORRELATION,
+  NEGATIVE_CORRELATION, BIND, COTREATMENT, COMPARISON, DRUG_INTERACTION, … — see
+  `examples/pubtator_relations.json` for a ready config (ASSOCIATION as polarity parent).
+- Rate-limited (~3 requests/s) and cached in `~/.cache/hakken/http`; ~1,000 documents per
+  minute when cached, a few minutes uncached.
 
 ## Sources
 Prefer sources that already give normalised entities + publication dates.
@@ -60,35 +75,44 @@ Text ({year}, {doc id}): {text}
 Scale guidance: tens of thousands of documents give meaningful graph structure;
 hundreds give a toy. For large corpora, process in batches and dedupe incrementally.
 
-## Clean config format
-`python3 scripts/hakken_kg.py clean raw.csv --config clean.json --upper-relations -o data.csv`
+## Relations and entities config
+Cleaning is not a separate step: `config/relations.json` and `config/entities.json` are
+applied every time a command builds the graph from the ledger, so the ledger stays untouched.
 
+`config/relations.json`:
 ```json
 {
-  "synonyms": {"p53": "TP53", "Tylenol": "acetaminophen"},
-  "rename":   {"USED_FOR_TREATMENT_OF": "TREATS", "OF": "IS_A_BIOMARKER_FOR",
-               "IS_METABOLITE_OF": "METABOLIZES"},
-  "swap":     {"IS_TREATED_BY": "TREATS", "IS_METABOLIZED_BY": "METABOLIZES",
-               "EXPRESSION_IS_INCREASED_IN": "INCREASES_EXPRESSION_OF"},
+  "definitions": {"TREATS": "subject is used to treat or cure object (disease)",
+                  "INCREASES_EXPRESSION_OF": "subject raises mRNA/protein level of object"},
+  "rename":   {"USED_FOR_TREATMENT_OF": "TREATS", "OF": "IS_A_BIOMARKER_FOR"},
+  "swap":     {"IS_TREATED_BY": "TREATS", "EXPRESSION_IS_INCREASED_IN": "INCREASES_EXPRESSION_OF"},
   "drop":     ["CO_OCCURS_WITH"],
   "keep_only": [],
-  "polarity": [
-    {"parent": "AFFECTS_EXPRESSION_OF",
-     "children": ["INCREASES_EXPRESSION_OF", "DECREASES_EXPRESSION_OF"]},
-    {"parent": "AFFECTS_ABUNDANCE_OF",
-     "children": ["INCREASES_ABUNDANCE_OF", "DECREASES_ABUNDANCE_OF"]}
-  ]
+  "polarity": [{"parent": "AFFECTS_EXPRESSION_OF",
+                "children": ["INCREASES_EXPRESSION_OF", "DECREASES_EXPRESSION_OF"]}],
+  "upper_snake": true,
+  "min_relation_count": 1,
+  "fusion_alpha": {"IS_A_BIOMARKER_FOR": 0.4}
 }
 ```
+`config/entities.json`:
+```json
+{"synonyms": {"p53": "TP53", "Tylenol": "acetaminophen"},
+ "exclude": ["Neoplasms", "cell"],
+ "lowercase": false}
+```
 - `swap` reverses subject/object and renames (passive → active).
-- `polarity` (paper Table E2): child only → add parent with the child's year; both
-  children → delete both, keep the parent with the earliest year.
-- `--min-relation-count N` removes extremely rare relations; `--lowercase` casefolds
-  entity names (use only if names are not case-sensitive, e.g. not gene symbols).
-- Rules are applied before `polarity`, so write polarity groups with final names.
+- `polarity` (paper Table E2): child only → parent added with the child's year; both children
+  → both removed, parent kept with the earliest year.
+- `exclude` keeps generic hubs out of shortlists (they still inform the graph).
+- `lowercase` only when names are not case-sensitive (not for gene symbols).
+- `definitions` are shown to language-branch judges — write them carefully.
+- Ready examples: `examples/biomedical_relations.json` (paper Table E2/E3),
+  `examples/pubtator_relations.json`.
+- One-off files outside a workspace: `H stats --triples f.csv --config cfg.json`.
 
 ## Quality checks
-Run `stats` after cleaning and look for:
+Run `H stats` after each config change and look for:
 - Year histogram: gaps or a spike in one year (bulk import artefact) distort temporal
   signals; restrict to a sensible range.
 - Hubs: generic nodes with huge degree (e.g. "cancer", "cell", "temperature") —

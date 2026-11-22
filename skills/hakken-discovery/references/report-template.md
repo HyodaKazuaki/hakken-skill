@@ -1,6 +1,7 @@
 # Report template
 
-Write the final report in the user's language. Keep scores, triples and years exact.
+`H report` generates this layout with sections 1–4 filled from the run; complete every
+`<!-- agent -->` placeholder. Write the final report in the user's language. Keep scores, triples and years exact.
 
 ```markdown
 # Hakken discovery report: <topic>
@@ -9,8 +10,8 @@ Write the final report in the user's language. Keep scores, triples and years ex
 - Goal: <research question>
 - Graph: <N entities>, <M triples>, <R relation types>, years <a–b>, sources <…>
 - Knowledge cutoff: <year>; seeds: <n> (<how chosen>)
-- Scorer: hakken_kg.py surrogate (temporal path model) [+ calibrated, window W]
-  [+ language-branch fusion α=<…>]. Not the THiGERLLM neural model.
+- Graph branch: temporal-network-feature logistic model fitted on (T−W, T] (or heuristic)
+  [+ language-branch fusion α=<…>, judge model <…>]. Not the THiGERLLM neural model.
 
 ## 2. Does the graph predict the future? (back-test)
 | cutoff | bin | micro recall | null | macro recall | null | nDCG | covered |

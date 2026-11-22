@@ -9,7 +9,7 @@ discoveries to fill the gaps in today's knowledge*, arXiv:2609.04494v1, Sep 2026
 - [PHELInE (explanation)](#pheline-explanation)
 - [Hypothesis selection](#hypothesis-selection)
 - [Results worth quoting](#results-worth-quoting)
-- [What the bundled surrogate keeps and drops](#what-the-bundled-surrogate-keeps-and-drops)
+- [What this implementation keeps and replaces](#what-this-implementation-keeps-and-replaces)
 - [Language branch protocol](#language-branch)
 - [Limitations and future directions named by the authors](#limitations-and-future-directions)
 
@@ -95,43 +95,30 @@ above-threshold hypotheses →
 - Also prototyped on 19th-century market-gardening texts (agriculture) and materials
   science.
 
-## What the bundled surrogate keeps and drops
-| Hakken component | `hakken_kg.py` |
+## What this implementation keeps and replaces
+| Hakken component | `hakken.py` |
 |---|---|
-| Temporal snapshots, first-occurrence | ✔ cutoff snapshots, earliest year kept |
-| Temporal evidence encoding | edge weight `Σ 0.5+0.5·exp(−Δt/τ)` (accumulation + recency) |
-| GraphSAGE structure | 2-hop (Adamic–Adar-like) + optional 3-hop path evidence |
-| Label embeddings / history | mined path-pattern → label rules + node relation profiles; `--include-connected` predicts new labels for known pairs |
-| Language branch | **done by the agent** (step 6 of the workflow) |
-| Calibration | per-relation Platt on a held-out recent window |
-| PHELInE surrogate | the scorer itself is queried on `G_E` and `G \ E` (exact, no retraining needed) |
-| Latent paths | `explain --latent` |
-| Selection pipeline | `select` (prepare, recency, top-k, path length) |
-| Ontology embeddings, neural training | ✘ (use HakkenOSS for the full model) |
+| Temporal snapshots, first occurrence | ✔ cutoff snapshots from the ledger, earliest year kept; plus multi-source `support` |
+| THiGER graph branch (GraphSAGE + temporal Transformer) | **replaced** by Science4Cast-style temporal network features (CN, Adamic–Adar, resource allocation, Jaccard, recency-weighted paths, degree growth, node age, 3-hop paths, support) + label features (mined path-pattern rules, node relation profiles, priors), one logistic model with per-relation intercepts fitted on `G(T−W) → (T−W, T]` in seconds (Newton–Raphson, stdlib) |
+| PU-safe loss, class balancing | negatives subsampled with inverse-probability weights; probabilities = reported within W (lower bound) |
+| Label history | `--include-connected` scores new relation types for already-connected pairs |
+| Language branch (Mistral-7B) | **the agent / sub-agents** (`judge-queue` → `record` → `fuse`), entity-separated pre-cutoff evidence via `evidence` |
+| Label-wise ensemble + calibration | `fuse`: `σ(α·logit p_graph + (1−α)·logit p_llm)`; graph branch is calibrated by construction (features) or Platt (heuristic) |
+| PHELInE surrogate GNN | not needed: the feature model itself is re-queried on `G_E` / `G \ E` (exact pseudo-retraining) |
+| Corpus / latent path candidates, diversity rerank | `explain` / `explain --latent` |
+| Selection pipeline | `novelty` + `select` (prepare, recency, top-k per entity, path length) |
+| Ontology embeddings (RDF2vec) | ✘ (use `synonyms`, entity types and `exclude` instead) |
+| External / future models | `predict --import-scores` (e.g. HakkenOSS THiGER if weights become available) |
+
+Why features instead of a GNN: in the Science4Cast benchmark (Krenn et al., arXiv:2210.00881),
+"the most powerful methods use a carefully curated set of network features, rather than an
+end-to-end AI approach" for predicting future links in an evolving concept network. HakkenOSS
+(github.com/SonyResearch/HakkenOSS, BSD-3) contains THiGER code but no public weights and no
+LLM branch, and training needs GPUs, PyG, ZenML and S3 — unsuitable for a portable skill.
 
 ## Language branch
-Goal: replicate the text branch's information diet and add semantic judgement.
-
-1. For each hypothesis entity, gather 5–20 short statements about it **alone**,
-   preferably dated ≤ cutoff (abstract sentences, database descriptions).
-2. Prompt yourself (or a sub-agent) with:
-
-```
-You assess a candidate scientific relation using ONLY the evidence below,
-written before {cutoff}. Do not use knowledge of later publications.
-Entity A: {s}. Evidence about A: {bullets}
-Entity B: {o}. Evidence about B: {bullets}
-Graph evidence paths: {top PHELInE paths with years}
-Candidate relation: ({s}, {r}, {o})
-1. Is there a coherent mechanism linking A and B? Name it in one sentence.
-2. Is the relation TYPE and DIRECTION the most plausible among {relation list}?
-   If not, which one is?
-3. Plausibility score 0.0-1.0 and the single biggest reason it could be wrong.
-Return JSON: {"mechanism":..., "best_relation":..., "score":..., "risk":...}
-```
-3. Ensemble with the graph rank (rank-normalise both to [0,1]). Record both.
-4. Novelty check afterwards: search "{s} {o}" (plus synonyms) — if reported, it is a
-   retrospective hit (good for validating the method, not a new discovery).
+See `language-branch.md` for the full protocol (roles, information firewall, sub-agent
+orchestration, judge prompt, fusion).
 
 ## Limitations and future directions
 Named by the authors — mention the relevant ones in reports:

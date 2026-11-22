@@ -1,179 +1,176 @@
 ---
 name: hakken-discovery
 description: >-
-  Hakken-style knowledge prediction for any research field. Builds a temporal
-  knowledge graph of (subject, relation, object, year) facts from the literature,
-  predicts as-yet-unpublished relationships between concepts, back-tests the
-  predictions on historic data against a null baseline, explains each hypothesis
-  with sufficiency/necessity-scored evidence paths (PHELInE-style), and filters
-  them into a short list for expert review and experimental validation. Use when
-  the user wants to generate, prioritise, or evaluate novel research hypotheses,
-  do literature-based discovery, find missing links or "what will be discovered
-  next" in a field, drug repurposing / target discovery, materials or agricultural
-  idea generation, or asks for a Hakken / THiGER / PHELInE workflow.
+  Hakken-style knowledge prediction for any research field (arXiv:2609.04494).
+  Builds a temporal knowledge graph of dated (subject, relation, object) facts from
+  the literature in a project workspace, predicts as-yet-unpublished relationships
+  with a fitted temporal-network-feature model (no GPU, no training infrastructure),
+  adds an LLM "language branch" judged by the agent or its sub-agents, back-tests
+  against a null baseline, explains hypotheses with sufficiency/necessity evidence
+  paths (PHELInE-style), checks novelty, and shortlists hypotheses with validation
+  designs. Use when the user wants novel research hypotheses, literature-based
+  discovery, missing links or "what will be discovered next" in a field, drug
+  repurposing / target discovery, materials or agricultural idea generation, or a
+  Hakken / THiGER / PHELInE workflow.
   日本語: 研究仮説の生成・発見予測・文献ベース発見・知識グラフによる未知の関係予測。
 license: MIT
+compatibility: Python 3.8+ standard library only; network access optional (PubTator3, PubMed, OpenAlex).
 metadata:
-  version: "1.0.0"
+  version: "2.0.0"
   based_on: "Besold et al., Hakken: Predicting future discoveries to fill the gaps in today's knowledge, arXiv:2609.04494 (2026)"
 ---
 
 # Hakken Discovery
 
-Turn a research question into **ranked, explained, testable hypotheses** of the form
-`(subject, relation, object)` by learning how knowledge in a field has grown over time.
-Follows the Hakken system (arXiv:2609.04494): temporal knowledge graph → relation
-prediction → calibrated confidence → back-testing → path explanations → selection →
-expert review → validation design.
+Turn a research question into **ranked, explained, testable hypotheses** `(subject, relation,
+object)` by learning how knowledge in a field has grown over time. Mirrors Hakken:
+temporal knowledge graph → graph-branch prediction → language branch → calibrated fusion →
+back-test → path explanations → selection → validation design.
 
-Core idea to keep in mind: a Hakken confidence score is **the weight of literature
-evidence that a relation should already exist given everything else known**, not proof
-it is true. Unobserved facts are *unlabeled*, not false (positive–unlabeled setting).
-
-## When to use / not use
-
-- Use: hypothesis generation, "what is missing between A and B", literature-based
-  discovery, drug repurposing/target ID, prioritising candidates, testing a user's own
-  hypothesis against the literature, comparing fields, research-gap mapping.
-- Do not use for: plain literature summaries, single fact lookups, or when the user
-  only wants a review article (just answer/search directly).
+A score here is **the weight of literature evidence that a relation should exist given what was
+known at the cutoff** — not proof. Unobserved relations are *unlabeled*, not false.
 
 ## Toolkit
 
-`scripts/hakken_kg.py` (Python 3.8+, standard library only — no install needed).
-Resolve the path relative to this SKILL.md. Input is a CSV/TSV with columns
-`subject, relation, object, year` (aliases like head/predicate/tail/date accepted).
+`scripts/hakken.py` (Python 3.8+, stdlib only). Resolve the path relative to this file; below
+`H` means `python3 <this skill dir>/scripts/hakken.py`. Every command has `-h`.
 
-| Command | Paper step | Purpose |
+| Command | Hakken step | Purpose |
 |---|---|---|
-| `stats FILE` | §4.1 | size, years, relation and hub distribution |
-| `clean FILE --config cfg.json` | App. E | synonyms, rename/swap/merge relations, earliest occurrence, polarity conflicts, rare relations |
-| `predict FILE --cutoff Y [--calibrate W]` | §2, App. B | score unobserved `(s,r,o)`; optional Platt calibration on window `(Y-W, Y]` |
-| `backtest FILE --cutoff Y` | §4.3 | interval recall vs. random-empirical-score null, macro recall, label nDCG per future bin |
-| `explain FILE -s S -r R -O O` | §3, App. D | path explanations with sufficiency / necessity, diversity rerank, `--latent` paths |
-| `select PRED --triples FILE` | App. F.2 | novelty filter, top-k per entity, recency, shortest-path length |
+| `init`, `status` | — | create / inspect the project workspace |
+| `fetch-pubtator`, `ingest` | §4.1, App. E | add dated observations (with provenance) to the ledger |
+| `stats`, `export-graph` | App. E | inspect the cleaned graph (config applied) |
+| `backtest` | §4.3 | interval recall vs. random-empirical-score null, macro recall, nDCG |
+| `predict` | §2 | graph branch → new run with `predictions.csv` (`--import-scores` for external models) |
+| `novelty` | App. F.2 | ledger check + optional external co-mention search (policy-gated) |
+| `evidence` | §2 text branch | sentences about ONE entity published before the cutoff |
+| `judge-queue`, `record`, `fuse` | §2, App. B.5 | language branch by (sub-)agents → logit ensemble |
+| `select` | App. F.2 | novelty, top-k per entity, recency, path length → `shortlist.csv` |
+| `explain` | §3, App. D | sufficiency / necessity path explanations, diversity rerank, latent paths |
+| `report` | — | `report.md` skeleton with all evidence; you fill mechanism & experiment |
 
-Run `python3 scripts/hakken_kg.py <cmd> -h` for all options. A demo dataset is in
-`examples/toy_triples.csv` (planted mechanisms; backtest should beat the null clearly).
+Graph branch (`--model features`, default): Science4Cast-style temporal network features
+(common neighbours, Adamic–Adar, resource allocation, Jaccard, recency-weighted paths, degree
+growth, node age, 3-hop paths, multi-source support) + relation-pattern/profile features,
+combined by a logistic model **fitted in seconds on the graph's own history**: snapshot at
+`T−W` → triples first published in `(T−W, T]`. Output `prob` ≈ chance of being reported within
+`W` time units. `--model heuristic` uses fixed weights. This replaces THiGER's GNN; it is not
+the THiGERLLM network — say so in reports. Method details: `references/method.md`.
 
-The built-in scorer is a transparent surrogate (temporal evidence accumulation +
-2/3-hop path structure + mined relation-pattern rules + node relation profiles), not
-the THiGERLLM neural model. Say so in reports. For the full model the paper points to
-https://github.com/SonyResearch/HakkenOSS. You (the agent) supply the paper's
-**language branch**: semantic plausibility judgements grounded in pre-cutoff text.
+## Where data lives
+
+All knowledge data lives in a **project workspace** (`hakken/` found by walking up from the
+CWD, or `--workspace` / `$HAKKEN_WORKSPACE`) — never in this skill directory. The ledger
+(`ledger/observations.csv`) is the append-only source of truth; `runs/<id>/` holds derived,
+reproducible outputs with a `manifest.json`. Download caches go to `~/.cache/hakken`.
+Default git policy is `private` (track config + ledger only). Details, layout and git policies:
+`references/workspace.md`.
+
+## Operating-mode policy (external searches)
+
+Two kinds of outbound queries exist; `hakken.json` holds the policy for each:
+- `entity_evidence_search` (default `allow`): single-entity lookups (`evidence`, `fetch-pubtator`).
+- `external_novelty_search` (default `ask`): searching a **pair** reveals an unpublished
+  hypothesis to third parties.
+
+Commands that send queries exit with code 3 unless the policy is `allow` or you pass
+`--confirmed`. Decide by your current operating mode:
+
+| Mode | What to do when the policy is `ask` |
+|---|---|
+| Interactive (user can answer now) | Show the exact queries, ask once per batch, re-run with `--confirmed` only after explicit approval |
+| Autonomous / unattended (auto-approve, goal or loop runs, headless `-p`/`exec`, CI, scheduled, sub-agent) | Do not ask mid-run and do not send pair queries; run `novelty --mark-pending`, finish everything else, list pending checks in the report and final message |
+| Plan / read-only | No writes, no network: describe the commands you would run |
+| Unsure | Treat as autonomous |
+
+Never pass `--confirmed` on your own judgement, never edit the policy unless the user asks,
+and never let judge sub-agents search for pairs.
 
 ## Workflow
 
-Copy this checklist into your working notes and tick it off:
+Copy this checklist into your notes and tick it off:
 
 ```
-- [ ] 1 Frame   : goal, domain, entity types, relation vocabulary, time unit, seed set
-- [ ] 2 Build   : temporal KG triples with first-publication year
-- [ ] 3 Clean   : normalise, reconcile polarity, earliest occurrence, prune
-- [ ] 4 Validate: backtest at 1-3 historic cutoffs; model must beat null
-- [ ] 5 Predict : score candidates at the current cutoff (calibrate if data allows)
-- [ ] 6 Fuse    : add LLM semantic assessment (language branch) -> ensemble
-- [ ] 7 Select  : novelty, top-k per entity, recency, path length, expert filters
-- [ ] 8 Explain : PHELInE-style paths for every shortlisted hypothesis
-- [ ] 9 Report  : ranked hypotheses + evidence + validation designs + caveats
+- [ ] 0 Workspace : H status (or H init --goal "...")
+- [ ] 1 Frame     : relations.json (vocabulary + definitions), entities.json, seeds.txt
+- [ ] 2 Ledger    : fetch-pubtator / ingest, with year + source + extractor
+- [ ] 3 Inspect   : H stats ; fix synonyms, hubs, relation merges
+- [ ] 4 Back-test : H backtest --cutoff <T-10>  -> model must beat null
+- [ ] 5 Predict   : H predict  -> run id
+- [ ] 6 Novelty   : H novelty --top 200 (+ external per mode policy)
+- [ ] 7 Language  : H judge-queue -> (sub-)agents -> H record judgments -> H fuse
+- [ ] 8 Select    : H select
+- [ ] 9 Explain   : H explain
+- [ ] 10 Report   : H report -> fill mechanism / risks / experiments -> present
 ```
 
-### 1. Frame the discovery problem
-Pin down with the user (ask only what you cannot infer):
-- **Research goal / topic** (e.g. aging, perovskite stability, soil microbiome).
-- **Entity types** (gene, drug, disease / material, property, process / crop, practice…).
-- **Relation vocabulary**: 5–30 typed, directed relations. Prefer mechanistic verbs
-  (`INCREASES_EXPRESSION_OF`, `INHIBITS`, `ENHANCES_PROPERTY`) over `RELATED_TO`.
-  Define a parent for opposing pairs (e.g. `AFFECTS` over `INCREASES`/`DECREASES`).
-- **Time unit** (publication year by default) and the **knowledge cutoff**.
-- **Seed entities** to focus on (the paper used 1,386 expert-chosen aging genes).
-See `references/domain-adaptation.md` for ready-made schemas per field.
+**0–1 Frame.** Run `H status`; if no workspace exists, `H init --goal "<question>" --domain <d>`
+(ask about the git policy only if the project is a public repository). Agree with the user on:
+entity types, 5–30 directed relations in UPPER_SNAKE with one-line `definitions`, polarity groups
+(e.g. `AFFECTS` over `INCREASES`/`DECREASES`), time unit, and seed entities. Write them to
+`config/relations.json`, `config/entities.json`, `config/seeds.txt`. Schemas per field:
+`references/domain-adaptation.md`.
 
-### 2. Build the temporal knowledge graph
-Priority order: (a) user-provided triples/database; (b) structured sources with
-dates (PubTator3, SemMedDB, OpenAlex, Crossref, domain DBs); (c) extraction you do
-from abstracts/full text with search tools. Every triple needs the **year it was first
-published**. Extraction rules and source list: `references/data-pipeline.md`.
-Aim for thousands of triples at minimum; the method relies on structure accumulating
-over time. With < ~300 triples, say the predictions are exploratory only.
+**2 Ledger.** Every observation needs the year of first publication and a source id.
+- Biomedicine: `H fetch-pubtator --query @GENE_TP53 --query "<topic>" --year-from 1995 --year-to 2025 --per-year 30`
+  (always stratify by year; relevance-ranked fetching returns mostly recent papers).
+- Other fields or user data: write a CSV `subject,relation,object,year,source,evidence` and
+  `H ingest file.csv --extractor user|agent:<model-name>|<database>`. Extraction protocol:
+  `references/data-pipeline.md`. Prefer thousands of observations spanning ≥15 years.
 
-### 3. Clean
-Write a `clean` config (synonyms, renames, swaps for passive relations, polarity groups,
-drop list), run `clean`, then `stats`. Check hubs: generic nodes ("cell", "protein",
-"disease") create trivial hypotheses — merge, drop or list them for `--exclude-entities`.
+**3 Inspect.** `H stats`. Merge synonyms, add generic hubs (e.g. "Neoplasms", "cell") to
+`entities.json` `exclude`, rename/swap/drop relations. Configuration is applied every time
+the graph is built, so the ledger never needs rewriting.
 
-### 4. Validate on history before trusting anything
-```
-python3 scripts/hakken_kg.py backtest data.csv --cutoff <Y-10> --bin 2 --bins 5
-```
-Repeat for 2–3 cutoffs. Report micro/macro recall per bin **versus the null**, nDCG,
-and `covered`. Do not report precision as a quality measure (unknown ≠ false).
-If the model does not clearly beat the null, the graph is too sparse or noisy — fix
-data (step 2–3) or tune `--hops 3`, `--tau`, `--hub-cap` before predicting.
-Interpretation guide: `references/evaluation.md`.
+**4 Back-test before trusting anything.** `H backtest --cutoff <latest−10>` (both models by
+default; add a second cutoff if time allows). Report micro/macro recall per bin **vs. the
+null**, nDCG and `covered`. Never report precision as quality. If the model does not clearly
+beat the null, fix data or scope (seeds, `--hops 3`, `--hub-cap`) before predicting. Reading
+guide: `references/evaluation.md`.
 
-### 5. Predict
-```
-python3 scripts/hakken_kg.py predict data.csv --cutoff <latest> --calibrate 5 \
-    [--seeds seeds.txt --seed-mode both] [--hops 3] -o predictions.csv
-```
-`prob` (when calibrated) ≈ chance the relation gets reported within W time units,
-a lower bound under PU. Without calibration use `rel_percentile` to compare across
-relation types. Only use `--hops 3` / `--seed-mode both` when the graph or seed set
-is small enough (cost grows with pairs × neighbours²).
+**5 Predict.** `H predict` (cutoff = latest year; `--window 5`; seeds from config;
+`--seed-mode both` scores all seed pairs). Prints the run directory; keeps the top 50,000
+(`--limit 0` = all). Cost is roughly 1 min per million candidate pairs; restrict with seeds or
+`--hub-cap` on large graphs. External model scores: `H predict --import-scores scores.csv`.
 
-### 6. Fuse the language branch (agent reasoning)
-For the top ~50–200 hypotheses, judge semantic plausibility *as the paper's text
-branch would*: from what is known about each entity **separately** before the cutoff.
-- Retrieve or recall short descriptions of `s` and `o` individually; do not search for
-  the pair itself (that would leak the answer and destroy novelty).
-- Score 0–1: is there a coherent mechanism? Is the relation type and direction right?
-- Combine label-wise: `final = α·graph_rank + (1-α)·llm_score` (α≈0.5; raise α for
-  dense graphs, lower it for rare relations where text helps most).
-- Then, and only then, search the literature for the pair: if already published,
-  mark **"known (missed by graph)"** and drop it from the novel list.
-Protocol and prompt template: `references/method.md#language-branch`.
+**6 Novelty.** `H novelty --top 200` marks pairs already in the ledger as `known`. For the rest,
+apply the operating-mode policy above (`--external pubmed|openalex --confirmed` or `--mark-pending`).
+A co-mention is not proof of the relation — review the examples it returns.
 
-### 7. Select
-```
-python3 scripts/hakken_kg.py select predictions.csv --triples data.csv \
-    --top-k 3 --score-col prob --min-score 0.5 --report selection.md -o shortlist.csv
-```
-Then apply expert criteria with the user: relevance to the goal, recency (hot vs.
-nascent area), path length (longer = less obvious, riskier), testability, cost.
+**7 Language branch.** `H judge-queue --top 50` writes `runs/<id>/judge/batch_*.jsonl` and
+`PROMPT.md`. Judge each batch yourself or with parallel sub-agents (one batch each), following
+`references/language-branch.md`: evidence about each entity **separately and before the
+cutoff** (`H evidence --entity X --before <cutoff> --exclude-term Y`), JSON output per item.
+Then `H record judgments <file>` and `H fuse` (logit ensemble, `--alpha 0.5` = equal weight).
 
-### 8. Explain every shortlisted hypothesis
-```
-python3 scripts/hakken_kg.py explain data.csv -s S -r R -O O --max-len 3 --latent
-```
-Translate the top diverse paths into mechanism sentences ("S regulates X [2004],
-and X increases expression of O [2011] → plausible S → O"). High sufficiency = the
-path alone supports it; high necessity = the prediction collapses without it.
-A hypothesis with no paths is speculative — say so.
+**8 Select.** `H select --top-k 3 --limit 30` → `shortlist.csv`, `selection.md`. Discuss with the
+user: relevance, recency (hot vs. nascent), path length (longer = less obvious), testability.
 
-### 9. Report and propose validation
-Use `references/report-template.md`. For each hypothesis give: triple, score/prob,
-evidence paths with years, LLM rationale, novelty check result, risks/alternative
-explanations, and a **minimal experiment** (perturb S, measure O; controls; readout;
-expected direction). In the paper, 2 of 3 top hypotheses passed wet-lab tests —
-communicate that a confirmed fraction well below 100% is normal.
+**9 Explain.** `H explain` (whole shortlist) or `H explain -s S -r R -O O --latent`. High
+sufficiency = the path alone supports the prediction; high necessity = it collapses without it.
+No paths = speculative. Paths through `exclude` hubs are skipped unless nothing else exists
+(`--allow-hubs` to show them).
+
+**10 Report.** `H report` writes `runs/<id>/report.md`; fill every `<!-- agent -->` placeholder:
+mechanism from the paths and judgments, why it could be wrong, and a **minimal experiment**
+(system, perturbation of the subject, readout of the object, controls, expected direction).
+Present the top hypotheses with the back-test context and any pending novelty checks. In the
+paper 2 of 3 wet-lab tests confirmed — set expectations accordingly.
 
 ## Guardrails
-- **Temporal hygiene**: build the graph only from data ≤ cutoff; when evaluating,
-  never let post-cutoff text inform scores. Warn that LLM pretraining may leak future
-  knowledge (the paper notes this too).
-- **Novelty**: a hypothesis is novel only if the pair has no recorded relation in the
-  graph *and* a targeted literature search finds no report.
-- **Polarity & negation**: extraction misses negated/speculative statements; treat
-  `INCREASES` vs `DECREASES` predictions as direction-uncertain unless paths agree.
-- **Hubs** dominate raw scores; always use top-k per entity and inspect hubs.
-- **Never present scores as probabilities of truth**; present them as literature
-  support. Keep quantitative/conditional limits (dose, environment) explicit.
-- Small or synthetic graphs: label results as illustrative.
+- Temporal hygiene: features, judgments and evidence must use only data ≤ cutoff; flag
+  `leak_suspected` when the LLM recognises a pair (those judgments are dropped by `fuse`).
+- Novel = pair unconnected in the ledger **and** no report found by a novelty check.
+- Polarity and negation are unreliable in extracted data; keep direction claims cautious.
+- Hubs dominate raw scores: use `exclude` and top-k per entity.
+- Never present scores as probabilities of truth; keep conditions/quantities explicit.
+- Graphs < ~1,000 observations or < 10 years: label results exploratory.
 
-## References (load on demand)
-- `references/method.md` — paper summary: THiGERLLM, PHELInE, losses, calibration, what the surrogate keeps/drops, language-branch protocol.
-- `references/data-pipeline.md` — sources, extraction prompt, schema, cleaning config format.
-- `references/domain-adaptation.md` — relation schemas and sources for biomedicine, materials, chemistry, agriculture, ecology, social science, CS/AI, physics.
-- `references/evaluation.md` — temporal split protocol, metrics, null baseline, reading results.
-- `references/report-template.md` — hypothesis card and final report layout.
+## References (load when needed)
+- `references/workspace.md` — workspace layout, ledger schema, git policies, run manifests, modes.
+- `references/language-branch.md` — sub-agent orchestration, judge protocol, evidence rules.
+- `references/method.md` — Hakken paper summary, what this implementation keeps / replaces.
+- `references/data-pipeline.md` — sources, extraction prompt, relations/entities config format.
+- `references/domain-adaptation.md` — relation schemas for biomedicine, materials, chemistry, agriculture, ecology, social science, CS/AI, physics.
+- `references/evaluation.md` — back-test protocol, metrics, null baseline, calibration reading.
+- `references/report-template.md` — final report layout and hypothesis card.

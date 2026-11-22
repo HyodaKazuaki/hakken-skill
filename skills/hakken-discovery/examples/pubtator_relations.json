@@ -1,0 +1,31 @@
+{
+  "_comment": "config/relations.json for data from `hakken.py fetch-pubtator` (PubTator3 / BioREx relation types).",
+  "definitions": {
+    "ASSOCIATION": "subject and object are reported as related (no direction or polarity stated)",
+    "POSITIVE_CORRELATION": "increase or activation of subject goes with increase or activation of object",
+    "NEGATIVE_CORRELATION": "increase or activation of subject goes with decrease or inhibition of object",
+    "BIND": "subject physically binds object",
+    "COTREATMENT": "subject and object are administered together",
+    "DRUG_INTERACTION": "subject and object interact as drugs",
+    "COMPARISON": "subject is compared with object",
+    "CONVERSION": "subject is converted into object"
+  },
+  "rename": {},
+  "swap": {},
+  "drop": [
+    "COMPARISON"
+  ],
+  "keep_only": [],
+  "polarity": [
+    {
+      "parent": "ASSOCIATION",
+      "children": [
+        "POSITIVE_CORRELATION",
+        "NEGATIVE_CORRELATION"
+      ]
+    }
+  ],
+  "upper_snake": true,
+  "min_relation_count": 20,
+  "fusion_alpha": {}
+}
