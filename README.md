@@ -1,7 +1,7 @@
 # hakken-skill
 
-論文 **"Hakken: Predicting future discoveries to fill the gaps in today's knowledge"**
-(Besold et al., Sony AI, arXiv:2609.04494, 2026) の方法論を、**どの研究分野にも適用できる
+論文 **[Hakken: Predicting future discoveries to fill the gaps in today's knowledge](https://arxiv.org/abs/2609.04494)**
+(Besold et al., Sony AI, [arXiv:2609.04494](https://arxiv.org/abs/2609.04494), 2026) の方法論を、**どの研究分野にも適用できる
 エージェントスキル**として実装したものです。Claude Code、Codex、Cursor、Gemini CLI、
 OpenCode など、[`skills` CLI](https://github.com/vercel-labs/skills) が対応するエージェントに
 `pnpx skills` でインストールできます。
@@ -97,6 +97,16 @@ skills/hakken-discovery/
 - スコアは「既存文献がその関係をどれだけ支持しているか」を表すもので、関係が真である確率ではありません。未観測の関係は「偽」ではなく「未ラベル」として扱います。
 - グラフ側のモデルは THiGERLLM の代わりとなる特徴量モデルです。論文に載っている性能をそのまま期待しないでください。
 - LLM の事前学習データに将来の文献が含まれている場合、情報の漏れを完全には防げません（`leak_suspected` フラグで検出し、`fuse` で除外します）。
+
+## 参考文献
+
+- T. R. Besold, U. Akujuobi, P. Sanchez, et al. "Hakken: Predicting future discoveries to fill the gaps in today's knowledge." arXiv:2609.04494, 2026. <https://arxiv.org/abs/2609.04494>
+- M. Krenn, L. Buffoni, B. Coutinho, et al. "Predicting the Future of AI with AI: High-quality link prediction in an exponentially growing knowledge network." arXiv:2210.00881, 2022. <https://arxiv.org/abs/2210.00881>（Science4Cast。特徴量ベースのグラフ側モデルの根拠）
+- X. Gu, M. Krenn. "Forecasting high-impact research topics via machine learning on evolving knowledge graphs." arXiv:2402.08640, 2024. <https://arxiv.org/abs/2402.08640>
+- SonyResearch/HakkenOSS（論文著者による公開実装、BSD-3-Clause）: <https://github.com/SonyResearch/HakkenOSS>
+- PubTator3: <https://www.ncbi.nlm.nih.gov/research/pubtator3/>
+
+このリポジトリは論文著者や Sony とは関係のない独立した実装です。
 
 ## License
 

@@ -17,7 +17,7 @@ license: MIT
 compatibility: Python 3.8+ standard library only; network access optional (PubTator3, PubMed, OpenAlex).
 metadata:
   version: "2.0.0"
-  based_on: "Besold et al., Hakken: Predicting future discoveries to fill the gaps in today's knowledge, arXiv:2609.04494 (2026)"
+  based_on: "Besold et al., Hakken: Predicting future discoveries to fill the gaps in today's knowledge, arXiv:2609.04494 (2026), https://arxiv.org/abs/2609.04494"
 ---
 
 # Hakken Discovery

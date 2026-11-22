@@ -1,7 +1,7 @@
 # Method: Hakken in detail
 
 Source: Besold, Akujuobi, Sanchez, et al. (Sony AI), *Hakken: Predicting future
-discoveries to fill the gaps in today's knowledge*, arXiv:2609.04494v1, Sep 2026.
+discoveries to fill the gaps in today's knowledge*, [arXiv:2609.04494](https://arxiv.org/abs/2609.04494) (v1, Sep 2026).
 
 ## Contents
 - [Problem definition](#problem-definition)
@@ -110,7 +110,7 @@ above-threshold hypotheses →
 | Ontology embeddings (RDF2vec) | ✘ (use `synonyms`, entity types and `exclude` instead) |
 | External / future models | `predict --import-scores` (e.g. HakkenOSS THiGER if weights become available) |
 
-Why features instead of a GNN: in the Science4Cast benchmark (Krenn et al., arXiv:2210.00881),
+Why features instead of a GNN: in the Science4Cast benchmark (Krenn et al., [arXiv:2210.00881](https://arxiv.org/abs/2210.00881)),
 "the most powerful methods use a carefully curated set of network features, rather than an
 end-to-end AI approach" for predicting future links in an evolving concept network. HakkenOSS
 (github.com/SonyResearch/HakkenOSS, BSD-3) contains THiGER code but no public weights and no
